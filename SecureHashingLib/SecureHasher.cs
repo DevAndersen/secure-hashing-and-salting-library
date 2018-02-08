@@ -30,26 +30,30 @@ namespace SecureHashingLib
         /// </summary>
         public List<byte[]> ExistingSalts { get; set; }
 
-        HashAlgorithm hashAlgorithm;
-        Random rand = new Random();
-        int saltBytesLength;
-        int saltRetryCap;
-        SaltingDelegate saltingDelegate;
-        bool autoUpdateExistingSaltsInternally;
+        private Random rand = new Random();
+
+        private HashAlgorithm hashAlgorithm;
+        private int hashingRounds;
+        private int saltBytesLength;
+        private int saltRetryCap;
+        private SaltingDelegate saltingDelegate;
+        private bool autoUpdateExistingSaltsInternally;
 
         /// <summary>
         /// SecureHasher constructor. All parameters, except for hashAlgorithm, are optional.
         /// This is to ensure the hashing algorithm is always chosen based on system development requirements, and timely security practices.
         /// </summary>
-        /// <param name="hashAlgorithm">The hashing algorithm (in the form of a child of System.Security.Cryptography.HashAlgorithm) that is to be used.</param>
+        /// <param name="hashAlgorithm">The hashing algorithm (in the form of a child of System.Security.Cryptography.HashAlgorithm) to be used.</param>
+        /// <param name="hashingRounds">The number of rounds of hashing and salting.</param>
         /// <param name="saltBytesLength">The length of the salt in bytes. Defaults to 8.</param>
         /// <param name="saltingDelegate">The logic for salting the bytes that are to be hashed. The default logic (null) is byte[].Concat(saltBytes). Different logic should be used if it is faster than the default, for the given use case.</param>
         /// <param name="existingSalts">A list of salts already used. Used to avoid salt collisions. Defaults to an empty list.</param>
         /// <param name="autoUpdateExistingSaltsInternally">Determines if the list of existing salts should dynamically update when a new salt is succesfully used. Defaults to true.</param>
         /// <param name="saltRetryCap">The number of times to try a new salt, in case a salt collision is encountered. If this limit is hit, a TimeoutException exception will be thrown, suggesting that the saltBytesLength parameter might be too small. Defaults to 1000.</param>
-        public SecureHasher(HashAlgorithm hashAlgorithm, int saltBytesLength = 8, SaltingDelegate saltingDelegate = null, List<byte[]> existingSalts = null, bool autoUpdateExistingSaltsInternally = true, int saltRetryCap = 1000)
+        public SecureHasher(HashAlgorithm hashAlgorithm, int hashingRounds, int saltBytesLength = 8, SaltingDelegate saltingDelegate = null, List<byte[]> existingSalts = null, bool autoUpdateExistingSaltsInternally = true, int saltRetryCap = 1000)
         {
             this.hashAlgorithm = hashAlgorithm;
+            this.hashingRounds = hashingRounds;
             this.saltBytesLength = saltBytesLength;
             ExistingSalts = existingSalts ?? new List<byte[]>();
             this.saltingDelegate = saltingDelegate ?? DefaultSaltingLogic;
@@ -58,7 +62,7 @@ namespace SecureHashingLib
         }
 
         /// <summary>
-        /// Hashes and salts the bytes parameter according to the specifications described in the SecureHasher constructor.
+        /// Salts and hashes the bytes parameter according to the specifications described in the SecureHasher constructor.
         /// Returns a HashAndSalt object, containing the hash and salt as properties.
         /// </summary>
         /// <param name="bytes">The bytes to be hashed and salted.</param>
@@ -67,7 +71,14 @@ namespace SecureHashingLib
         {
             byte[] salt = GenerateSalt();
             byte[] saltedBytes = saltingDelegate(bytes, salt);
-            byte[] hash = hashAlgorithm.ComputeHash(saltedBytes);
+
+            byte[] hash = saltedBytes;
+
+            for (int round = 0; round < hashingRounds; round++)
+            {
+                hash = hashAlgorithm.ComputeHash(hash);
+            }
+
             HashAndSalt hashAndSalt = new HashAndSalt(hash, salt);
             if (autoUpdateExistingSaltsInternally)
             {
